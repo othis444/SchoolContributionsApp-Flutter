@@ -7,6 +7,8 @@ import 'package:school_contributions_app/data/models/student.dart';
 import 'package:school_contributions_app/data/models/student_monthly_payment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // لتهيئة StudentRepository
 import 'package:firebase_auth/firebase_auth.dart'; // للحصول على UID المعلم
+import 'package:intl/intl.dart'
+    as intl2; // لاستخدام DateFormat لتنسيق التاريخ (كما طلبت)
 
 class ClassLeadProvider extends ChangeNotifier {
   late final StudentRepository _studentRepository;
@@ -92,6 +94,7 @@ class ClassLeadProvider extends ChangeNotifier {
       );
       _classStudents[index] = student.copyWith(
         monthlyPayments: currentPayments,
+        // تم إزالة 'id: ''' هنا
       );
       notifyListeners();
     }
@@ -112,6 +115,7 @@ class ClassLeadProvider extends ChangeNotifier {
       );
       _classStudents[index] = student.copyWith(
         monthlyPayments: currentPayments,
+        // تم إزالة 'id: ''' هنا
       );
       notifyListeners();
     }
@@ -132,6 +136,7 @@ class ClassLeadProvider extends ChangeNotifier {
       );
       _classStudents[index] = student.copyWith(
         monthlyPayments: currentPayments,
+        // تم إزالة 'id: ''' هنا
       );
       notifyListeners();
     }

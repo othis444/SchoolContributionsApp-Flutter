@@ -46,4 +46,19 @@ class AppUser {
       'assignedClasses': assignedClasses,
     };
   }
+
+  // دالة مساعدة لإنشاء نسخة جديدة من المستخدم مع تحديثات
+  AppUser copyWith({
+    String? id,
+    String? email,
+    UserRole? role,
+    List<String>? assignedClasses,
+  }) {
+    return AppUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      assignedClasses: assignedClasses ?? this.assignedClasses,
+    );
+  }
 }

@@ -1,15 +1,15 @@
 // lib/data/repositories/student_repository.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'
-    hide AuthProvider; // إخفاء AuthProvider من Firebase
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:school_contributions_app/data/datasources/student_datasource.dart';
 import 'package:school_contributions_app/data/models/student.dart';
-import 'package:school_contributions_app/data/models/user.dart'; // استيراد نموذج المستخدم
+import 'package:school_contributions_app/data/models/user.dart';
+import 'package:flutter/foundation.dart'; // لاستخدام debugPrint
 
 class StudentRepository {
   final StudentDataSource _studentDataSource;
-  final FirebaseFirestore _firestore; // للوصول إلى بيانات المستخدم/الدور
+  final FirebaseFirestore _firestore;
 
   StudentRepository(this._studentDataSource, this._firestore);
 
@@ -25,7 +25,11 @@ class StudentRepository {
     await _studentDataSource.addStudent(student);
   }
 
-  // تحديث مجمع للدفعات
+  // دالة جديدة: إضافة مجموعة من الطلاب
+  Future<void> addStudentsFromCsv(List<Student> students) async {
+    await _studentDataSource.addMultipleStudents(students);
+  }
+
   Future<void> updateMultipleStudentPayments(
     List<Student> students,
     String monthKey,
@@ -43,44 +47,72 @@ class StudentRepository {
 
   // للحصول على دور المستخدم من Firestore
   Future<UserRole> getUserRole(String userId) async {
+    debugPrint('StudentRepository: Attempting to get role for userId: $userId');
     try {
       final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (userDoc.exists && userDoc.data()!.containsKey('role')) {
-        final roleString = userDoc.data()!['role'] as String;
-        return UserRole.values.firstWhere(
-          (e) => e.toString().split('.').last == roleString,
-          orElse: () =>
-              UserRole.student, // دور افتراضي إذا لم يتم العثور على الدور
+
+      if (userDoc.exists) {
+        debugPrint('StudentRepository: User document for $userId exists.');
+        if (userDoc.data()!.containsKey('role')) {
+          final roleString = userDoc.data()!['role'] as String;
+          debugPrint(
+            'StudentRepository: Fetched role string from Firestore: "$roleString" for user $userId',
+          );
+
+          final cleanedRoleString = roleString.trim().toLowerCase();
+
+          final foundRole = UserRole.values.firstWhere(
+            (e) =>
+                e.toString().split('.').last.toLowerCase() == cleanedRoleString,
+            orElse: () {
+              debugPrint(
+                'StudentRepository: Role string "$roleString" (cleaned to "$cleanedRoleString") not found in UserRole enum. Defaulting to Student.',
+              );
+              return UserRole.student;
+            },
+          );
+          debugPrint(
+            'StudentRepository: Resolved role for $userId: ${foundRole.toString().split('.').last}',
+          );
+          return foundRole;
+        } else {
+          debugPrint(
+            'StudentRepository: User document for $userId exists, but does not contain "role" field.',
+          );
+          return UserRole.student;
+        }
+      } else {
+        debugPrint(
+          'StudentRepository: User document for $userId does NOT exist in Firestore.',
         );
+        return UserRole.student;
       }
     } catch (e) {
-      print('Error getting user role: $e');
+      debugPrint('StudentRepository: ERROR getting user role for $userId: $e');
+      return UserRole.student;
     }
-    return UserRole
-        .student; // دور افتراضي إذا لم يتم العوثور على المستند أو الدور
   }
 
-  // إضافة مستخدم جديد (مدير فقط)
   Future<void> addUser(AppUser user) async {
     await _firestore.collection('users').doc(user.id).set(user.toJson());
   }
 
-  // تحديث بيانات المستخدم (مثل الفصول المخصصة)
   Future<void> updateUser(AppUser user) async {
     await _firestore.collection('users').doc(user.id).update(user.toJson());
   }
 
-  // جلب جميع المستخدمين (للمدير)
   Stream<List<AppUser>> getAllUsers() {
     return _firestore
         .collection('users')
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
-              .map(
-                (doc) => AppUser.fromJson(doc.data()..['id'] = doc.id),
-              ) // تأكد من تعيين الـ ID
+              .map((doc) => AppUser.fromJson(doc.data()..['id'] = doc.id))
               .toList(),
         );
+  }
+
+  Future<void> deleteUser(String userId) async {
+    await _studentDataSource.deleteUser(userId);
   }
 }

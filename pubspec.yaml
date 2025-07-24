@@ -48,8 +48,9 @@ dependencies:
   provider: ^6.1.5 # تحقق من أحدث إصدار
   go_router: ^16.0.0 # تحقق من أحدث إصدار
   csv: ^6.0.0 # تحقق من أحدث إصدار
-  file_picker: ^10.2.0 # تحقق من أحدث إصدار
+  # file_picker: ^10.2.0 # تحقق من أحدث إصدار
   form_validator: ^2.1.1 # تحقق من أحدث إصدار
+  flutter_file_dialog: ^3.0.2
   
 dev_dependencies:
   flutter_test:

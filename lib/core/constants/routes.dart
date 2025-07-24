@@ -4,8 +4,10 @@ class AppRoutes {
   static const String login = '/';
   static const String adminDashboard = '/admin-dashboard';
   static const String classLeadDashboard = '/class-lead-dashboard';
-  static const String studentManagement = '/admin/student-management';
-  static const String userManagement = '/admin/user-management';
+  // <--- تم التعديل هنا: جعل هذه المسارات نسبية للمسار الأب
+  static const String studentManagement =
+      'student-management'; // لا تبدأ بـ '/'
+  static const String userManagement = 'user-management'; // لا تبدأ بـ '/'
   static const String studentDetails =
       '/student-details'; // مسار اختياري لتفاصيل الطالب
 }
