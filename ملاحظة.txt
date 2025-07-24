@@ -1,0 +1,11 @@
+Firebase configuration file lib\firebase_options.dart generated successfully with the following Firebase apps:
+
+Platform  Firebase App Id
+web       1:85988987684:web:65b45b00d3b6d4f79319b1
+android   1:85988987684:android:fb90578cdc6e74649319b1
+ios       1:85988987684:ios:0b2614d646e7fa469319b1
+macos     1:85988987684:ios:0b2614d646e7fa469319b1
+windows   1:85988987684:web:03e7adec4409c68e9319b1
+
+Learn more about using this file and next steps from the documentation:
+ > https://firebase.google.com/docs/flutter/setup

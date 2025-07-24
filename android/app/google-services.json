@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "85988987684",
+    "project_id": "schoolcontributionsapp",
+    "storage_bucket": "schoolcontributionsapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:85988987684:android:fb90578cdc6e74649319b1",
+        "android_client_info": {
+          "package_name": "com.example.school_contributions_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAueMgeVjJNc-B_17VW8tUDrRqOagsH-Nc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
