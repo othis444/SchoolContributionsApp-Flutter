@@ -297,28 +297,21 @@ class _ClassLeadDashboardScreenState extends State<ClassLeadDashboardScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                initialValue: currentPayment.notes,
-                                textAlign: TextAlign.right,
-                                decoration: const InputDecoration(
-                                  labelText: 'ملاحظات',
-                                  hintText: 'أضف أي ملاحظات...',
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    vertical: 10,
-                                    horizontal: 12,
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  classLeadProvider
-                                      .updateStudentPaymentNotesLocally(
-                                        student.id,
-                                        value,
-                                      );
-                                },
-                                maxLines: 2,
-                              ),
+                              // <--- تم إزالة حقل الملاحظات هنا
+                              // TextFormField(
+                              //   initialValue: currentPayment.notes,
+                              //   textAlign: TextAlign.right,
+                              //   decoration: const InputDecoration(
+                              //     labelText: 'ملاحظات',
+                              //     hintText: 'أضف أي ملاحظات...',
+                              //     isDense: true,
+                              //     contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              //   ),
+                              //   onChanged: (value) {
+                              //     classLeadProvider.updateStudentPaymentNotesLocally(student.id, value);
+                              //   },
+                              //   maxLines: 2,
+                              // ),
                             ],
                           ),
                         ),

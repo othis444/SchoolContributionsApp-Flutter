@@ -2,9 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart'; // <--- استيراد GoRouter
 import 'package:school_contributions_app/data/models/student.dart';
 import 'package:school_contributions_app/presentation/providers/admin_dashboard_provider.dart';
-import 'package:school_contributions_app/data/models/user.dart'; // لاستخدام UserRole في AddEditStudentDialog
+import 'package:school_contributions_app/data/models/user.dart';
+import 'package:school_contributions_app/core/constants/routes.dart'; // <--- استيراد AppRoutes
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -15,47 +17,40 @@ class StudentManagementScreen extends StatefulWidget {
 }
 
 class _StudentManagementScreenState extends State<StudentManagementScreen> {
-  String? _selectedClassFilter; // <--- جديد: فلتر الصف المختار
-  String? _selectedSectionFilter; // <--- جديد: فلتر الشعبة المختار
+  String? _selectedClassFilter;
+  String? _selectedSectionFilter;
 
-  // قائمة الصفوف المتاحة للفلترة (يمكن أن تكون ديناميكية لاحقًا)
+  // <--- تم التعديل هنا: تسميات الصفوف بالأرقام من 1 إلى 12
   final List<String> _availableClassesFilter = [
-    'الصف الأول أ',
-    'الصف الأول ب',
-    'الصف الثاني أ',
-    'الصف الثاني ب',
-    'الصف الثالث أ',
-    'الصف الثالث ب',
-    'الصف الرابع أ',
-    'الصف الرابع ب',
-    'الصف الخامس أ',
-    'الصف الخامس ب',
-    'الصف السادس أ',
-    'الصف السادس ب',
-    'الصف السابع أ',
-    'الصف السابع ب',
-    'الصف الثامن أ',
-    'الصف الثامن ب',
-    'الصف التاسع أ',
-    'الصف التاسع ب',
-    'الصف العاشر أ',
-    'الصف العاشر ب',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
   ];
 
-  // قائمة الشعب المتاحة للفلترة (يمكن أن تكون ديناميكية لاحقًا)
   final List<String> _availableSectionsFilter = ['أ', 'ب', 'ج', 'د', 'هـ'];
+
+  Set<String> _selectedStudentIds = {};
+  bool _isSelectionMode = false;
 
   @override
   void initState() {
     super.initState();
     // AdminDashboardProvider يقوم بالفعل بالاستماع للطلاب في مُنشئه.
-    // لا حاجة لاستدعاء listenToAllStudents() هنا.
   }
 
   // دالة لفلترة الطلاب بناءً على الفلاتر المختارة
   List<Student> _getFilteredStudents(List<Student> allStudents) {
     if (_selectedClassFilter == null && _selectedSectionFilter == null) {
-      return allStudents; // إذا لم يتم اختيار أي فلاتر، أظهر جميع الطلاب
+      return allStudents;
     }
 
     return allStudents.where((student) {
@@ -70,6 +65,44 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       }
       return matchesClass && matchesSection;
     }).toList();
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      if (!_isSelectionMode) {
+        _selectedStudentIds.clear(); // مسح التحديد عند الخروج من وضع التحديد
+      }
+    });
+  }
+
+  void _toggleStudentSelection(String studentId) {
+    setState(() {
+      if (_selectedStudentIds.contains(studentId)) {
+        _selectedStudentIds.remove(studentId);
+      } else {
+        _selectedStudentIds.add(studentId);
+      }
+      // إذا لم يتم تحديد أي طالب، قم بإلغاء وضع التحديد
+      if (_selectedStudentIds.isEmpty) {
+        _isSelectionMode = false;
+      }
+    });
+  }
+
+  void _selectAllFilteredStudents() {
+    final provider = Provider.of<AdminDashboardProvider>(
+      context,
+      listen: false,
+    );
+    final filteredStudents = _getFilteredStudents(provider.allStudents);
+    setState(() {
+      _selectedStudentIds.clear();
+      for (var student in filteredStudents) {
+        _selectedStudentIds.add(student.id);
+      }
+      _isSelectionMode = true; // تفعيل وضع التحديد
+    });
   }
 
   void _showAddEditStudentDialog({Student? studentToEdit}) {
@@ -129,25 +162,66 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
-  Future<void> _importStudents() async {
-    final provider = Provider.of<AdminDashboardProvider>(
-      context,
-      listen: false,
-    );
-    await provider.parseStudentsFromCsv();
-
-    if (provider.errorMessage != null &&
-        provider.parsedStudentsForImport.isEmpty) {
+  void _confirmDeleteSelectedStudents() {
+    if (_selectedStudentIds.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(provider.errorMessage!)));
-    } else {
-      _showCsvValidationDialog(
-        context,
-        provider.parsedStudentsForImport,
-        provider.csvValidationErrors,
-      );
+      ).showSnackBar(const SnackBar(content: Text('الرجاء تحديد طلاب للحذف.')));
+      return;
     }
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('تأكيد الحذف الجماعي'),
+            content: Text(
+              'هل أنت متأكد أنك تريد حذف ${_selectedStudentIds.length} طالبًا محددًا؟',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  final provider = Provider.of<AdminDashboardProvider>(
+                    dialogContext,
+                    listen: false,
+                  );
+                  await provider.deleteMultipleStudents(
+                    List<String>.from(_selectedStudentIds),
+                  );
+                  if (provider.errorMessage == null) {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'تم حذف ${_selectedStudentIds.length} طالبًا بنجاح!',
+                        ),
+                      ),
+                    );
+                    setState(() {
+                      _selectedStudentIds.clear();
+                      _isSelectionMode = false;
+                    });
+                  } else {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text(provider.errorMessage!)),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('حذف'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showCsvValidationDialog(
@@ -237,12 +311,60 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
+  Future<void> _importStudents() async {
+    final provider = Provider.of<AdminDashboardProvider>(
+      context,
+      listen: false,
+    );
+    await provider.parseStudentsFromCsv();
+
+    if (provider.errorMessage != null &&
+        provider.parsedStudentsForImport.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(provider.errorMessage!)));
+    } else {
+      _showCsvValidationDialog(
+        context,
+        provider.parsedStudentsForImport,
+        provider.csvValidationErrors,
+      );
+    }
+  }
+
+  // <--- جديد: دالة للانتقال إلى شاشة تفاصيل الطالب
+  void _showStudentDetails(Student student) {
+    context.go('${AppRoutes.studentDetails}/${student.id}');
+  }
+  // نهاية إضافة دالة تفاصيل الطالب --->
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إدارة الطلاب'),
+        title: _isSelectionMode
+            ? Text('${_selectedStudentIds.length} محدد')
+            : const Text('إدارة الطلاب'), // <--- عنوان ديناميكي
         actions: [
+          if (_isSelectionMode) // <--- أزرار وضع التحديد
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              onPressed: _selectAllFilteredStudents,
+              tooltip: 'تحديد الكل',
+            ),
+          if (_isSelectionMode && _selectedStudentIds.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_forever),
+              onPressed: _confirmDeleteSelectedStudents,
+              tooltip: 'حذف المحدد',
+            ),
+          IconButton(
+            icon: _isSelectionMode
+                ? const Icon(Icons.cancel)
+                : const Icon(Icons.checklist), // <--- تبديل أيقونة وضع التحديد
+            onPressed: _toggleSelectionMode,
+            tooltip: _isSelectionMode ? 'إلغاء التحديد' : 'تحديد متعدد',
+          ),
           IconButton(
             icon: const Icon(Icons.upload_file),
             onPressed: _importStudents,
@@ -254,9 +376,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         textDirection: TextDirection.rtl,
         child: Consumer<AdminDashboardProvider>(
           builder: (context, provider, child) {
-            final filteredStudents = _getFilteredStudents(
-              provider.allStudents,
-            ); // <--- استخدام الطلاب المفلترين
+            final filteredStudents = _getFilteredStudents(provider.allStudents);
 
             if (provider.isLoading) {
               return const Center(child: CircularProgressIndicator());
@@ -276,7 +396,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
             return Column(
               children: [
-                // <--- منطقة الفلاتر الجديدة
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
@@ -361,7 +480,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   ),
                 ),
 
-                // نهاية منطقة الفلاتر الجديدة --->
                 if (filteredStudents.isEmpty &&
                     (_selectedClassFilter != null ||
                         _selectedSectionFilter != null))
@@ -392,72 +510,114 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         horizontal: 16.0,
                         vertical: 8.0,
                       ),
-                      itemCount: filteredStudents
-                          .length, // <--- استخدام الطلاب المفلترين هنا
+                      itemCount: filteredStudents.length,
                       itemBuilder: (context, index) {
-                        final student =
-                            filteredStudents[index]; // <--- استخدام الطلاب المفلترين هنا
+                        final student = filteredStudents[index];
+                        final isSelected = _selectedStudentIds.contains(
+                          student.id,
+                        );
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 8.0),
                           elevation: 3,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${student.studentName} (${student.serialNumber})',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blueGrey,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'الصف: ${student.className} - الشعبة: ${student.section}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                                Text(
-                                  'معلم الفصل: ${student.classLeadName ?? 'غير معروف'}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.edit,
-                                        color: Colors.blue,
-                                      ),
-                                      onPressed: () =>
-                                          _showAddEditStudentDialog(
-                                            studentToEdit: student,
+                          color: isSelected
+                              ? Colors.blue.shade50
+                              : null, // <--- تلوين العنصر المحدد
+                          child: InkWell(
+                            // <--- لجعل العنصر قابلاً للنقر
+                            onLongPress: () {
+                              // <--- تفعيل وضع التحديد عند الضغط المطول
+                              _toggleSelectionMode();
+                              _toggleStudentSelection(student.id);
+                            },
+                            onTap: () {
+                              // <--- تحديد/إلغاء التحديد عند النقر في وضع التحديد
+                              if (_isSelectionMode) {
+                                _toggleStudentSelection(student.id);
+                              } else {
+                                _showStudentDetails(
+                                  student,
+                                ); // <--- استدعاء دالة عرض التفاصيل
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Row(
+                                // <--- استخدام Row لتضمين Checkbox
+                                children: [
+                                  if (_isSelectionMode) // <--- عرض مربع الاختيار فقط في وضع التحديد
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: (bool? newValue) {
+                                        _toggleStudentSelection(student.id);
+                                      },
+                                    ),
+                                  Expanded(
+                                    // <--- لجعل المحتوى يأخذ المساحة المتبقية
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${student.studentName} (${student.serialNumber})',
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blueGrey,
                                           ),
-                                      tooltip: 'تعديل الطالب',
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'الصف: ${student.className} - الشعبة: ${student.section}',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                        Text(
+                                          'معلم الفصل: ${student.classLeadName ?? 'غير معروف'}',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        if (!_isSelectionMode) // <--- أزرار التعديل والحذف تظهر فقط خارج وضع التحديد
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.end,
+                                            children: [
+                                              IconButton(
+                                                icon: const Icon(
+                                                  Icons.edit,
+                                                  color: Colors.blue,
+                                                ),
+                                                onPressed: () =>
+                                                    _showAddEditStudentDialog(
+                                                      studentToEdit: student,
+                                                    ),
+                                                tooltip: 'تعديل الطالب',
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(
+                                                  Icons.delete,
+                                                  color: Colors.red,
+                                                ),
+                                                onPressed: () =>
+                                                    _confirmDeleteStudent(
+                                                      student,
+                                                    ),
+                                                tooltip: 'حذف الطالب',
+                                              ),
+                                            ],
+                                          ),
+                                      ],
                                     ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: () =>
-                                          _confirmDeleteStudent(student),
-                                      tooltip: 'حذف الطالب',
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -470,10 +630,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddEditStudentDialog(),
-        backgroundColor: Colors.blueAccent,
-        child: const Icon(Icons.person_add, color: Colors.white),
-        tooltip: 'إضافة طالب جديد',
+        onPressed: _isSelectionMode
+            ? _confirmDeleteSelectedStudents
+            : () => _showAddEditStudentDialog(), // <--- تبديل وظيفة الزر العائم
+        backgroundColor: _isSelectionMode ? Colors.red : Colors.blueAccent,
+        child: Icon(
+          _isSelectionMode ? Icons.delete_sweep : Icons.person_add,
+          color: Colors.white,
+        ),
+        tooltip: _isSelectionMode ? 'حذف الطلاب المحددين' : 'إضافة طالب جديد',
       ),
     );
   }
@@ -500,27 +665,20 @@ class _AddEditStudentDialogState extends State<AddEditStudentDialog> {
   final TextEditingController _sectionController = TextEditingController();
   String? _selectedClassLeadId;
 
+  // <--- تم التعديل هنا: تسميات الصفوف بالأرقام من 1 إلى 12
   final List<String> _availableClasses = [
-    'الصف الأول أ',
-    'الصف الأول ب',
-    'الصف الثاني أ',
-    'الصف الثاني ب',
-    'الصف الثالث أ',
-    'الصف الثالث ب',
-    'الصف الرابع أ',
-    'الصف الرابع ب',
-    'الصف الخامس أ',
-    'الصف الخامس ب',
-    'الصف السادس أ',
-    'الصف السادس ب',
-    'الصف السابع أ',
-    'الصف السابع ب',
-    'الصف الثامن أ',
-    'الصف الثامن ب',
-    'الصف التاسع أ',
-    'الصف التاسع ب',
-    'الصف العاشر أ',
-    'الصف العاشر ب',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
   ];
 
   List<AppUser> _availableClassLeads = [];
@@ -535,9 +693,12 @@ class _AddEditStudentDialogState extends State<AddEditStudentDialog> {
       _studentNameController.text = widget.studentToEdit!.studentName;
 
       final cleanedClassName = widget.studentToEdit!.className.trim();
+      // التأكد من أن الصف الذي تم تحميله موجود في القائمة الجديدة
       _classNameController.text = _availableClasses.contains(cleanedClassName)
           ? cleanedClassName
-          : _availableClasses.first;
+          : (_availableClasses.isNotEmpty
+                ? _availableClasses.first
+                : ''); // استخدام أول عنصر أو فارغ إذا كانت القائمة فارغة
 
       final cleanedGender = widget.studentToEdit!.gender.trim();
       _selectedGender = ['ذكر', 'أنثى'].contains(cleanedGender)

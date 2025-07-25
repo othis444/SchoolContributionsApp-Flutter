@@ -7,18 +7,19 @@ import 'package:provider/provider.dart';
 
 // استيراد المسارات
 import 'package:school_contributions_app/core/constants/routes.dart';
-import 'package:school_contributions_app/presentation/admin/student_management_screen.dart';
 
 // استيراد الشاشات التي سنستخدمها
 import 'package:school_contributions_app/presentation/auth/login_screen.dart';
 import 'package:school_contributions_app/presentation/admin/admin_dashboard_screen.dart';
 import 'package:school_contributions_app/presentation/class_lead/class_lead_dashboard_screen.dart';
+import 'package:school_contributions_app/presentation/admin/student_management_screen.dart';
 import 'package:school_contributions_app/presentation/admin/user_management_screen.dart';
 import 'package:school_contributions_app/presentation/student_details_screen.dart'; // شاشة تفاصيل الطالب
 
 // استيراد AuthProvider
 import 'package:school_contributions_app/presentation/providers/auth_provider.dart';
 import 'package:school_contributions_app/data/models/user.dart'; // لاستخدام UserRole
+import 'package:flutter/foundation.dart'; // لاستخدام debugPrint
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -29,115 +30,180 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late final GoRouter _router;
+  bool _isRouterInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    _router = _buildRouter(authProvider);
-  }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      _router = GoRouter(
+        initialLocation: AppRoutes.login,
+        routes: [
+          GoRoute(
+            path: AppRoutes.login,
+            builder: (context, state) => const LoginScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.adminDashboard,
+            builder: (context, state) => const AdminDashboardScreen(),
+            routes: [
+              // <--- إضافة مسارات فرعية هنا
+              GoRoute(
+                path: AppRoutes.studentManagement, // <--- المسار النسبي
+                builder: (context, state) => const StudentManagementScreen(),
+              ),
+              GoRoute(
+                path: AppRoutes.userManagement, // <--- المسار النسبي
+                builder: (context, state) => const UserManagementScreen(),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: AppRoutes.classLeadDashboard,
+            builder: (context, state) =>
+                ClassLeadDashboardScreen(key: ValueKey('classLeadDashboard')),
+            routes: [
+              // <--- إضافة مسارات فرعية هنا أيضاً إذا لزم الأمر
+              // يمكنك إضافة مسارات فرعية هنا لـ ClassLeadDashboard مثل تفاصيل الطالب
+            ],
+          ),
+          // <--- مسار تفاصيل الطالب مع معامل ID
+          GoRoute(
+            path:
+                '${AppRoutes.studentDetails}/:studentId', // مسار مع معامل studentId
+            builder: (context, state) {
+              final studentId = state.pathParameters['studentId'];
+              debugPrint(
+                'StudentDetailsScreen builder: studentId received: $studentId',
+              ); // <--- رسالة Debug
+              if (studentId == null) {
+                debugPrint(
+                  'StudentDetailsScreen builder: studentId is NULL, showing error screen.',
+                ); // <--- رسالة Debug
+                return Scaffold(
+                  appBar: AppBar(title: const Text('خطأ')),
+                  body: const Center(child: Text('معرف الطالب مفقود!')),
+                );
+              }
+              return StudentDetailsScreen(
+                studentId: studentId,
+                key: ValueKey('studentDetails-$studentId'),
+              );
+            },
+          ),
+        ],
+        refreshListenable: authProvider,
+        redirect: (context, state) {
+          final bool isLoggedIn = authProvider.isLoggedIn;
+          final UserRole? userRole = authProvider.userRole;
+          final bool isLoading = authProvider.isLoading;
 
-  GoRouter _buildRouter(AuthProvider authProvider) {
-    return GoRouter(
-      initialLocation: AppRoutes.login,
-      routes: [
-        GoRoute(
-          path: AppRoutes.login,
-          builder: (context, state) => const LoginScreen(),
-        ),
-        GoRoute(
-          path: AppRoutes.adminDashboard,
-          builder: (context, state) => const AdminDashboardScreen(),
-          routes: [
-            // <--- تعريف المسارات الفرعية هنا
-            GoRoute(
-              path: AppRoutes
-                  .studentManagement, // <--- تم التعديل هنا (باستخدام المسار النسبي الجديد)
-              builder: (context, state) => const StudentManagementScreen(),
-            ),
-            GoRoute(
-              path: AppRoutes
-                  .userManagement, // <--- تم التعديل هنا (باستخدام المسار النسبي الجديد)
-              builder: (context, state) => const UserManagementScreen(),
-            ),
-          ],
-        ),
-        GoRoute(
-          path: AppRoutes.classLeadDashboard,
-          builder: (context, state) =>
-              ClassLeadDashboardScreen(key: ValueKey('classLeadDashboard')),
-        ),
-        GoRoute(
-          path: AppRoutes.studentDetails,
-          builder: (context, state) =>
-              StudentDetailsScreen(key: ValueKey('studentDetails')),
-        ),
-      ],
-      refreshListenable: authProvider,
-      redirect: (context, state) {
-        final bool isLoggedIn = authProvider.isLoggedIn;
-        final UserRole? userRole = authProvider.userRole;
-        final bool isLoadingAuth = authProvider.isLoading;
+          debugPrint(
+            'GoRouter Redirect: Current Path: ${state.fullPath}, IsLoggedIn: $isLoggedIn, UserRole: ${userRole?.toString().split('.').last}, IsLoading: $isLoading',
+          );
 
-        if (isLoadingAuth) {
+          if (isLoading) {
+            debugPrint(
+              'GoRouter Redirect: Auth or Role is still loading, returning null.',
+            );
+            return null;
+          }
+
+          final bool isLoggingIn = state.fullPath == AppRoutes.login;
+          final bool isGoingToAdminDashboard =
+              state.fullPath == AppRoutes.adminDashboard ||
+              (state.fullPath?.startsWith('${AppRoutes.adminDashboard}/') ??
+                  false);
+          final bool isGoingToClassLeadDashboard =
+              state.fullPath == AppRoutes.classLeadDashboard ||
+              (state.fullPath?.startsWith('${AppRoutes.classLeadDashboard}/') ??
+                  false);
+          final bool isGoingToStudentDetails =
+              (state.fullPath?.startsWith('${AppRoutes.studentDetails}/') ??
+              false); // <--- جديد: للتحقق من مسار تفاصيل الطالب
+
+          if (!isLoggedIn) {
+            debugPrint(
+              'GoRouter Redirect: Not logged in. Redirecting to login if not already there.',
+            );
+            return isLoggingIn ? null : AppRoutes.login;
+          }
+
+          if (isLoggingIn && isLoggedIn) {
+            debugPrint(
+              'GoRouter Redirect: Logged in and on login screen. Checking role for redirection.',
+            );
+            if (userRole == UserRole.admin) {
+              debugPrint(
+                'GoRouter Redirect: Role is Admin. Redirecting to Admin Dashboard.',
+              );
+              return AppRoutes.adminDashboard;
+            } else if (userRole == UserRole.classLead) {
+              debugPrint(
+                'GoRouter Redirect: Role is Class Lead. Redirecting to Class Lead Dashboard.',
+              );
+              return AppRoutes.classLeadDashboard;
+            }
+            debugPrint(
+              'GoRouter Redirect: Role not recognized or is Student. Redirecting to Login.',
+            );
+            return AppRoutes.login;
+          }
+
+          // إذا كان المستخدم مسجل الدخول وليس في شاشة تسجيل الدخول،
+          // تأكد من أنه في لوحة التحكم الصحيحة لدوره
+          if (isLoggedIn && !isLoggingIn) {
+            if (userRole == UserRole.admin &&
+                !isGoingToAdminDashboard &&
+                !isGoingToStudentDetails) {
+              debugPrint(
+                'GoRouter Redirect: Logged in as Admin, but not on Admin Dashboard or Student Details path. Redirecting.',
+              );
+              return AppRoutes.adminDashboard;
+            } else if (userRole == UserRole.classLead &&
+                !isGoingToClassLeadDashboard &&
+                !isGoingToStudentDetails) {
+              debugPrint(
+                'GoRouter Redirect: Logged in as Class Lead, but not on Class Lead Dashboard or Student Details path. Redirecting.',
+              );
+              return AppRoutes.classLeadDashboard;
+            } else if (userRole == UserRole.student) {
+              // إذا كان طالبًا، أعده إلى شاشة تسجيل الدخول
+              debugPrint(
+                'GoRouter Redirect: Logged in as Student. Redirecting to Login.',
+              );
+              return AppRoutes.login;
+            }
+          }
+
+          debugPrint(
+            'GoRouter Redirect: No specific redirect needed. User is in correct state.',
+          );
           return null;
-        }
-
-        final bool isLoggingIn = state.fullPath == AppRoutes.login;
-        // <--- تم التعديل هنا: التحقق من أن المسار يبدأ بمسار لوحة تحكم المدير
-        final bool isGoingToAdminDashboard =
-            state.fullPath == AppRoutes.adminDashboard ||
-            (state.fullPath?.startsWith('${AppRoutes.adminDashboard}/') ??
-                false); // <--- تم التعديل هنا
-        final bool isGoingToClassLeadDashboard =
-            state.fullPath == AppRoutes.classLeadDashboard;
-
-        if (!isLoggedIn) {
-          return isLoggingIn ? null : AppRoutes.login;
-        }
-
-        if (isLoggingIn && isLoggedIn) {
-          // <--- تم تبديل الترتيب ليكون منطقيًا أكثر
-          if (userRole == UserRole.admin) {
-            return AppRoutes.adminDashboard;
-          } else if (userRole == UserRole.classLead) {
-            return AppRoutes.classLeadDashboard;
-          }
-          return AppRoutes.login;
-        }
-
-        // منع المستخدمين من الوصول إلى لوحات التحكم غير المخصصة لهم
-        if (isLoggedIn) {
-          if (userRole == UserRole.admin &&
-              !isGoingToAdminDashboard &&
-              !isLoggingIn) {
-            return AppRoutes.adminDashboard;
-          }
-          if (userRole == UserRole.classLead &&
-              !isGoingToClassLeadDashboard &&
-              !isLoggingIn) {
-            return AppRoutes.classLeadDashboard;
-          }
-          // إذا كان المستخدم في لوحة التحكم الصحيحة، لا توجيه
-          if (userRole == UserRole.admin && isGoingToAdminDashboard)
-            return null;
-          if (userRole == UserRole.classLead && isGoingToClassLeadDashboard)
-            return null;
-        }
-
-        return null;
-      },
-      errorBuilder: (context, state) => Scaffold(
-        appBar: AppBar(title: const Text('خطأ')),
-        body: Center(child: Text('حدث خطأ: ${state.error}')),
-      ),
-    );
+        },
+        errorBuilder: (context, state) => Scaffold(
+          appBar: AppBar(title: const Text('خطأ')),
+          body: Center(child: Text('حدث خطأ: ${state.error}')),
+        ),
+      );
+      setState(() {
+        _isRouterInitialized = true;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isRouterInitialized) {
+      return const MaterialApp(
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
+
     return MaterialApp.router(
       title: 'متابعة المساهمات المجتمعية',
+
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -152,6 +218,7 @@ class _MyAppState extends State<MyApp> {
         }
         return supportedLocales.first;
       },
+
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -168,7 +235,7 @@ class _MyAppState extends State<MyApp> {
               borderRadius: BorderRadius.circular(10),
             ),
             textStyle: const TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
             backgroundColor: Colors.blue.shade700,
