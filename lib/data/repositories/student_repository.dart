@@ -1,21 +1,37 @@
 // lib/data/repositories/student_repository.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:school_contributions_app/data/datasources/student_datasource.dart';
 import 'package:school_contributions_app/data/models/student.dart';
 import 'package:school_contributions_app/data/models/user.dart';
 import 'package:flutter/foundation.dart'; // لاستخدام debugPrint
+// تأكد من استيراد هذا
 
 class StudentRepository {
   final StudentDataSource _studentDataSource;
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore _firestore; // للحصول على دور المستخدم مباشرة
 
   StudentRepository(this._studentDataSource, this._firestore);
 
-  Stream<List<Student>> getStudentsForClassLead(String classLeadId) {
+  Stream<List<Student>> getStudentsByClassLeadId(String classLeadId) {
     return _studentDataSource.getStudentsByClassLeadId(classLeadId);
   }
+
+  Stream<List<Student>> getStudentsByClassName(String className) {
+    return _studentDataSource.getStudentsByClassName(className);
+  }
+
+  // <--- جديد: جلب الطلاب حسب اسم الصف ومعرف المعلم المسؤول
+  Stream<List<Student>> getStudentsByClassNameAndClassLeadId(
+    String className,
+    String classLeadId,
+  ) {
+    return _studentDataSource.getStudentsByClassNameAndClassLeadId(
+      className,
+      classLeadId,
+    );
+  }
+  // نهاية إضافة الدالة الجديدة --->
 
   Stream<List<Student>> getAllStudents() {
     return _studentDataSource.getAllStudents();
@@ -25,11 +41,13 @@ class StudentRepository {
     await _studentDataSource.addStudent(student);
   }
 
-  // دالة جديدة: إضافة مجموعة من الطلاب
+  // <--- جديد: إضافة دالة addStudentsFromCsv التي تستدعي addMultipleStudents
   Future<void> addStudentsFromCsv(List<Student> students) async {
     await _studentDataSource.addMultipleStudents(students);
   }
+  // نهاية إضافة الدالة الجديدة --->
 
+  // الدالة updateMultipleStudentPayments موجودة بالفعل وتستدعي updateStudentPayments من DataSource
   Future<void> updateMultipleStudentPayments(
     List<Student> students,
     String monthKey,
@@ -45,7 +63,6 @@ class StudentRepository {
     await _studentDataSource.deleteStudent(studentId);
   }
 
-  // للحصول على دور المستخدم من Firestore
   Future<UserRole> getUserRole(String userId) async {
     debugPrint('StudentRepository: Attempting to get role for userId: $userId');
     try {
@@ -90,6 +107,30 @@ class StudentRepository {
     } catch (e) {
       debugPrint('StudentRepository: ERROR getting user role for $userId: $e');
       return UserRole.student;
+    }
+  }
+
+  Future<AppUser?> getUserData(String userId) async {
+    debugPrint(
+      'StudentRepository: Attempting to get AppUser data for userId: $userId',
+    );
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (userDoc.exists && userDoc.data() != null) {
+        final data = userDoc.data()!;
+        debugPrint('StudentRepository: User data for $userId: $data');
+        return AppUser.fromJson(data..['id'] = userDoc.id);
+      } else {
+        debugPrint(
+          'StudentRepository: User document for $userId does NOT exist or is empty.',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint(
+        'StudentRepository: ERROR getting AppUser data for $userId: $e',
+      );
+      return null;
     }
   }
 

@@ -2,13 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart' as intl2; // لاستخدام DateFormat لتنسيق التاريخ
 import 'package:school_contributions_app/data/models/student.dart';
-import 'package:school_contributions_app/presentation/providers/admin_dashboard_provider.dart'; // يمكن استخدام هذا المزود لجلب الطلاب
 import 'package:school_contributions_app/data/models/student_monthly_payment.dart';
+import 'package:school_contributions_app/presentation/providers/admin_dashboard_provider.dart';
+import 'package:intl/intl.dart' as intl2; // For date formatting
+// For debugPrint
 
 class StudentDetailsScreen extends StatefulWidget {
-  final String studentId; // ID الطالب الذي سيتم عرض تفاصيله
+  final String studentId;
 
   const StudentDetailsScreen({super.key, required this.studentId});
 
@@ -17,331 +18,371 @@ class StudentDetailsScreen extends StatefulWidget {
 }
 
 class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
-  Student? _student;
-  bool _isLoading = true;
-  String? _errorMessage;
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  // Map to hold local changes to monthly payments for this specific student
+  final Map<String, StudentMonthlyPayment> _localMonthlyPaymentChanges = {};
+
+  // Controllers for each month's amount field
+  final Map<String, TextEditingController> _amountControllers = {};
 
   @override
   void initState() {
     super.initState();
-    _fetchStudentDetails();
+    // No need to add a listener to AdminDashboardProvider here,
+    // as we'll use Consumer in the build method.
+    // The provider's allStudents list will be updated by its own listener.
   }
 
-  Future<void> _fetchStudentDetails() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      // نستخدم AdminDashboardProvider لجلب قائمة الطلاب، ثم نبحث عن الطالب المحدد
-      final provider = Provider.of<AdminDashboardProvider>(
-        context,
-        listen: false,
-      );
+  // This method will be called to initialize controllers and local changes
+  // It's called in build to ensure it reacts to provider updates.
+  void _initializePaymentData(Student student) {
+    // Clear existing controllers and local changes to re-initialize
+    _amountControllers.forEach((key, controller) => controller.dispose());
+    _amountControllers.clear();
+    _localMonthlyPaymentChanges.clear();
 
-      // ننتظر قليلاً إذا كانت البيانات لا تزال قيد التحميل في المزود
-      // أو يمكننا استخدام StreamBuilder في الـ build method للاستماع للتغييرات
-      // ولكن للتبسيط، سنفترض أن البيانات ستكون متاحة قريباً.
-      // الطريقة الأفضل هي أن يكون لدى المزود دالة 'getStudentById'
-      // حالياً، سنبحث في القائمة الموجودة.
-
-      // بما أن AdminDashboardProvider يقوم بالاستماع للطلاب، يمكننا ببساطة
-      // البحث في قائمة allStudents الخاصة به.
-      // إذا لم يكن الطالب موجودًا فورًا، يمكننا إضافة منطق لإعادة المحاولة أو عرض رسالة.
-
-      // يمكننا أيضاً الاستماع إلى تغييرات allStudents في المزود
-      // ولكن لضمان أننا نحصل على أحدث البيانات فورًا، يمكننا إعادة جلبها أو الاعتماد على Stream
-      // For simplicity, we'll try to find it directly after a short delay if needed.
-
-      // A more robust way would be to have a direct method in StudentRepository
-      // or AdminDashboardProvider to get a single student by ID,
-      // and potentially listen to it. For now, we'll search the existing list.
-
-      // We'll add a listener to the provider to react to changes in allStudents
-      // and update our local _student variable.
-      provider.addListener(_onProviderChange);
-      _onProviderChange(); // Call once initially
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'فشل جلب تفاصيل الطالب: $e';
-        _isLoading = false;
+    if (student.monthlyPayments.isNotEmpty) {
+      student.monthlyPayments.forEach((monthKey, payment) {
+        _localMonthlyPaymentChanges[monthKey] = payment;
+        _amountControllers[monthKey] = TextEditingController(
+          text: payment.amount.toStringAsFixed(2),
+        );
       });
+    } else {
+      // If no payments exist, initialize for current month as a default
+      final currentMonthKey = intl2.DateFormat(
+        'yyyy-MM',
+      ).format(DateTime.now());
+      _localMonthlyPaymentChanges[currentMonthKey] = StudentMonthlyPayment(
+        isPaid: false,
+        amount: 1000.0,
+      );
+      _amountControllers[currentMonthKey] = TextEditingController(
+        text: '1000.00',
+      );
     }
   }
 
-  void _onProviderChange() {
-    final provider = Provider.of<AdminDashboardProvider>(
+  void _updateLocalPaymentStatus(String monthKey, bool isPaid) {
+    setState(() {
+      final currentPayment = _localMonthlyPaymentChanges[monthKey];
+      if (currentPayment != null) {
+        _localMonthlyPaymentChanges[monthKey] = currentPayment.copyWith(
+          isPaid: isPaid,
+        );
+      }
+    });
+  }
+
+  void _updateLocalPaymentAmount(String monthKey, double amount) {
+    setState(() {
+      final currentPayment = _localMonthlyPaymentChanges[monthKey];
+      if (currentPayment != null) {
+        _localMonthlyPaymentChanges[monthKey] = currentPayment.copyWith(
+          amount: amount,
+        );
+      }
+    });
+  }
+
+  Future<void> _saveStudentPayments() async {
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الرجاء تصحيح الأخطاء في الحقول قبل الحفظ.'),
+        ),
+      );
+      return;
+    }
+
+    final adminProvider = Provider.of<AdminDashboardProvider>(
       context,
       listen: false,
     );
-    final foundStudent = provider.allStudents.firstWhere(
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    // Get the current student from the provider's list
+    final student = adminProvider.allStudents.firstWhere(
       (s) => s.id == widget.studentId,
-      orElse: () => Student(
-        id: '',
-        serialNumber: '',
-        studentName: '',
-        className: '',
-        gender: '',
-        section: '',
-        classLeadId: '',
-      ), // Return a dummy student if not found
+      orElse: () => throw Exception('Student not found for update.'),
     );
 
-    if (foundStudent.id.isNotEmpty && foundStudent.id == widget.studentId) {
-      setState(() {
-        _student = foundStudent;
-        _isLoading = false;
-        _errorMessage = null;
-      });
-    } else if (!provider.isLoading &&
-        provider.errorMessage != null &&
-        _student == null) {
-      setState(() {
-        _errorMessage = provider.errorMessage;
-        _isLoading = false;
-      });
-    } else if (!provider.isLoading && _student == null) {
-      setState(() {
-        _errorMessage = 'لم يتم العثور على الطالب.';
-        _isLoading = false;
-      });
+    // Create a new student object with updated monthly payments
+    final updatedStudent = student.copyWith(
+      monthlyPayments: Map.from(student.monthlyPayments)
+        ..addAll(_localMonthlyPaymentChanges),
+    );
+
+    try {
+      // Use the existing updateStudentData to save the whole student object
+      await adminProvider.updateStudent(updatedStudent);
+      if (adminProvider.errorMessage == null) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('تم حفظ الدفعات بنجاح!')),
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text(adminProvider.errorMessage!)),
+        );
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('فشل حفظ الدفعات: $e')),
+      );
     }
   }
 
   @override
   void dispose() {
-    // إزالة المستمع لتجنب تسرب الذاكرة
-    Provider.of<AdminDashboardProvider>(
-      context,
-      listen: false,
-    ).removeListener(_onProviderChange);
+    // Dispose all TextEditingControllers to prevent memory leaks
+    _amountControllers.forEach((key, controller) => controller.dispose());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('تفاصيل الطالب')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('تفاصيل الطالب')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              _errorMessage!,
-              style: const TextStyle(color: Colors.red, fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_student == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('تفاصيل الطالب')),
-        body: const Center(
-          child: Text(
-            'لا يمكن عرض تفاصيل الطالب. البيانات غير متوفرة.',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
-    }
-
-    // فرز الدفعات حسب الشهر (من الأحدث إلى الأقدم)
-    final sortedPaymentsKeys = _student!.monthlyPayments.keys.toList()
-      ..sort((a, b) => b.compareTo(a)); // فرز تنازلي (أحدث شهر أولاً)
-
     return Scaffold(
-      appBar: AppBar(
-        title: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Text('تفاصيل الطالب: ${_student!.studentName}'),
-        ),
-      ),
+      appBar: AppBar(title: const Text('تفاصيل الطالب')),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        child: Consumer<AdminDashboardProvider>(
+          builder: (context, adminProvider, child) {
+            if (adminProvider.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            // Find the student based on studentId
+            final student = adminProvider.allStudents.firstWhere(
+              (s) => s.id == widget.studentId,
+              orElse: () => Student(
+                // Return a dummy student if not found
+                id: widget.studentId,
+                serialNumber: '',
+                studentName: 'الطالب غير موجود',
+                className: '',
+                gender: '',
+                section: '',
+                classLeadId: '',
+                classLeadName: '',
+                monthlyPayments: {},
+              ),
+            );
+
+            // Re-initialize payment data and controllers whenever student data changes
+            // This ensures the UI is always in sync with the latest data from the provider
+            _initializePaymentData(student);
+
+            // Sort months for display (latest month first)
+            final sortedMonthKeys = _localMonthlyPaymentChanges.keys.toList()
+              ..sort((a, b) => b.compareTo(a));
+
+            if (student.id == widget.studentId &&
+                student.studentName == 'الطالب غير موجود') {
+              return const Center(
+                child: Text(
+                  'الطالب غير موجود أو تم حذفه.',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'معلومات الطالب',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              color: Colors.blue.shade800,
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const Divider(height: 20, thickness: 1),
-                      _buildInfoRow('الرقم التسلسلي:', _student!.serialNumber),
-                      _buildInfoRow('اسم الطالب:', _student!.studentName),
-                      _buildInfoRow(
-                        'الصف:',
-                        '${_student!.className} - الشعبة: ${_student!.section}',
-                      ),
-                      _buildInfoRow('الجنس:', _student!.gender),
-                      _buildInfoRow(
-                        'معلم الفصل:',
-                        _student!.classLeadName ?? 'غير معروف',
-                      ),
-                    ],
+              );
+            }
+
+            return Column(
+              children: [
+                // Student general info card
+                Card(
+                  margin: const EdgeInsets.all(16.0),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'سجل الدفعات الشهرية',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.green.shade800,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Divider(height: 20, thickness: 1),
-              if (sortedPaymentsKeys.isEmpty)
-                const Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20.0),
-                    child: Text(
-                      'لا توجد دفعات مسجلة لهذا الطالب حتى الآن.',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${student.studentName} (${student.serialNumber})',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'الصف: ${student.className} - الشعبة: ${student.section}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        Text(
+                          'الجنس: ${student.gender}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        Text(
+                          'معلم الفصل: ${student.classLeadName ?? 'غير معروف'}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true, // مهم داخل SingleChildScrollView
-                  physics:
-                      const NeverScrollableScrollPhysics(), // لمنع التمرير المزدوج
-                  itemCount: sortedPaymentsKeys.length,
-                  itemBuilder: (context, index) {
-                    final monthKey = sortedPaymentsKeys[index];
-                    final payment = _student!.monthlyPayments[monthKey]!;
-
-                    // تحويل مفتاح الشهر (YYYY-MM) إلى تنسيق عربي قابل للقراءة
-                    final monthDate = intl2.DateFormat(
-                      'yyyy-MM',
-                    ).parse(monthKey);
-                    final formattedMonth = intl2.DateFormat.yMMM(
-                      'ar',
-                    ).format(monthDate);
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              formattedMonth,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            _buildPaymentRow(
-                              'حالة الدفع:',
-                              payment.isPaid ? 'مدفوع' : 'غير مدفوع',
-                              payment.isPaid ? Colors.green : Colors.red,
-                            ),
-                            _buildPaymentRow(
-                              'المبلغ:',
-                              '${payment.amount.toStringAsFixed(2)} ريال',
-                              Colors.deepPurple,
-                            ),
-                            if (payment.notes != null &&
-                                payment.notes!.isNotEmpty)
-                              _buildPaymentRow(
-                                'الملاحظات:',
-                                payment.notes!,
-                                Colors.grey.shade700,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
-            ],
-          ),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  child: Text(
+                    'سجل الدفعات الشهرية:',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueAccent,
+                    ),
+                  ),
+                ),
+
+                Expanded(
+                  child: Form(
+                    key: _formKey,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 8.0,
+                      ),
+                      itemCount: sortedMonthKeys.length,
+                      itemBuilder: (context, index) {
+                        final monthKey = sortedMonthKeys[index];
+                        final payment = _localMonthlyPaymentChanges[monthKey]!;
+                        final formattedMonth = intl2.DateFormat.yMMM(
+                          'ar',
+                        ).format(intl2.DateFormat('yyyy-MM').parse(monthKey));
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 8.0),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'الشهر: $formattedMonth',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: Row(
+                                        children: [
+                                          Checkbox(
+                                            value: payment.isPaid,
+                                            onChanged: (bool? newValue) {
+                                              _updateLocalPaymentStatus(
+                                                monthKey,
+                                                newValue ?? false,
+                                              );
+                                            },
+                                            activeColor: Colors.green,
+                                          ),
+                                          const Text('تم الدفع'),
+                                        ],
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 3,
+                                      child: TextFormField(
+                                        controller:
+                                            _amountControllers[monthKey],
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.right,
+                                        decoration: const InputDecoration(
+                                          labelText: 'المبلغ',
+                                          suffixText: 'ريال',
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                            vertical: 10,
+                                            horizontal: 12,
+                                          ),
+                                        ),
+                                        onChanged: (value) {
+                                          final amount = double.tryParse(value);
+                                          if (amount != null) {
+                                            _updateLocalPaymentAmount(
+                                              monthKey,
+                                              amount,
+                                            );
+                                          } else {
+                                            _updateLocalPaymentAmount(
+                                              monthKey,
+                                              0.0,
+                                            );
+                                          }
+                                        },
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'مطلوب';
+                                          }
+                                          final amount = double.tryParse(value);
+                                          if (amount == null ||
+                                              amount.isNaN ||
+                                              amount.isInfinite) {
+                                            return 'رقم غير صالح';
+                                          }
+                                          if (amount < 0) {
+                                            return 'يجب أن يكون موجباً';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: ElevatedButton.icon(
+                    onPressed: _saveStudentPayments,
+                    icon: const Icon(Icons.save),
+                    label: const Text('حفظ التغييرات'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  // دالة مساعدة لبناء صفوف المعلومات
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 15, color: Colors.black54),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // دالة مساعدة لبناء صفوف الدفعات
-  Widget _buildPaymentRow(String label, String value, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(value, style: TextStyle(fontSize: 15, color: color)),
-          ),
-        ],
       ),
     );
   }

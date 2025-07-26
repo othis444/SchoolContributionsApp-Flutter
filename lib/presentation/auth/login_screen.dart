@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:school_contributions_app/presentation/providers/auth_provider.dart';
-import 'package:go_router/go_router.dart'; // لاستخدام GoRouter للتنقل
+// لاستخدام GoRouter للتنقل
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

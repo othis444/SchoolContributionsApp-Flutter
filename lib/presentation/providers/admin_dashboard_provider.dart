@@ -6,11 +6,11 @@ import 'package:school_contributions_app/data/repositories/student_repository.da
 import 'package:school_contributions_app/data/models/student.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:school_contributions_app/data/models/user.dart';
-import 'package:flutter_file_dialog/flutter_file_dialog.dart'; // <--- تم التغيير هنا: استخدام flutter_file_dialog
+import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:csv/csv.dart';
 import 'dart:convert';
-import 'package:flutter/foundation.dart'; // لاستخدام debugPrint
-import 'dart:io'; // لاستخدام File
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class AdminDashboardProvider extends ChangeNotifier {
   late final StudentRepository _studentRepository;
@@ -28,8 +28,9 @@ class AdminDashboardProvider extends ChangeNotifier {
       StudentDataSource(FirebaseFirestore.instance),
       FirebaseFirestore.instance,
     );
+    // <--- تم التعديل هنا: استدعاء listenToAllUsers() في المُنشئ
+    // هذا يضمن أن _classLeadIdToNameMap يتم تهيئته مبكراً
     _listenToAllUsers();
-    _listenToAllStudents();
   }
 
   List<Student> get allStudents => _allStudents;
@@ -41,20 +42,20 @@ class AdminDashboardProvider extends ChangeNotifier {
   List<Student> get parsedStudentsForImport => _parsedStudentsForImport;
   List<String> get csvValidationErrors => _csvValidationErrors;
 
-  void _listenToAllStudents() {
+  // دالة عامة للاستماع لجميع الطلاب، يتم استدعاؤها عند الحاجة
+  void listenToAllStudents() {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    debugPrint(
-      'AdminDashboardProvider: Starting to listen to all students...',
-    ); // <--- Debug
+    debugPrint('AdminDashboardProvider: Starting to listen to all students...');
     _studentRepository.getAllStudents().listen(
       (students) {
         debugPrint(
           'AdminDashboardProvider: Received ${students.length} students from stream.',
-        ); // <--- Debug
+        );
         _allStudents = students.map((student) {
+          // <--- التأكد من استخدام _classLeadIdToNameMap المحدث هنا --->
           return student.copyWith(
             classLeadName:
                 _classLeadIdToNameMap[student.classLeadId] ?? 'غير معروف',
@@ -64,7 +65,7 @@ class AdminDashboardProvider extends ChangeNotifier {
         notifyListeners();
         debugPrint(
           'AdminDashboardProvider: _allStudents updated. Notifying listeners.',
-        ); // <--- Debug
+        );
       },
       onError: (error) {
         _errorMessage = 'فشل تحميل بيانات الطلاب: $error';
@@ -72,33 +73,41 @@ class AdminDashboardProvider extends ChangeNotifier {
         notifyListeners();
         debugPrint(
           'AdminDashboardProvider: Error listening to all students: $error',
-        ); // <--- Debug
+        );
       },
     );
   }
 
+  // دالة خاصة للاستماع لجميع المستخدمين (يتم استدعاؤها في المُنشئ)
   void _listenToAllUsers() {
+    // <--- تم تغيير الاسم إلى خاص
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    debugPrint(
-      'AdminDashboardProvider: Starting to listen to all users...',
-    ); // <--- Debug
+    debugPrint('AdminDashboardProvider: Starting to listen to all users...');
     _studentRepository.getAllUsers().listen(
       (users) {
         debugPrint(
           'AdminDashboardProvider: Received ${users.length} users from stream.',
-        ); // <--- Debug
+        );
         _allUsers = users;
         _classLeadIdToNameMap = {
           for (var user in users) user.id: user.email.split('@')[0],
         };
+        // <--- تحديث أسماء معلمي الفصل للطلاب الموجودين بالفعل بعد جلب المستخدمين --->
+        _allStudents = _allStudents.map((student) {
+          return student.copyWith(
+            classLeadName:
+                _classLeadIdToNameMap[student.classLeadId] ?? 'غير معروف',
+          );
+        }).toList();
+        // نهاية التحديث --->
         _isLoading = false;
         notifyListeners();
         debugPrint(
           'AdminDashboardProvider: _allUsers and _classLeadIdToNameMap updated. Notifying listeners.',
-        ); // <--- Debug
+        );
       },
       onError: (error) {
         _errorMessage = 'فشل تحميل بيانات المستخدمين: $error';
@@ -106,9 +115,16 @@ class AdminDashboardProvider extends ChangeNotifier {
         notifyListeners();
         debugPrint(
           'AdminDashboardProvider: Error listening to all users: $error',
-        ); // <--- Debug
+        );
       },
     );
+  }
+
+  // دالة عامة يمكن استدعاؤها يدوياً لتحديث المستخدمين إذا لزم الأمر
+  // (على سبيل المثال، من UserManagementScreen)
+  void fetchAllUsers() {
+    // <--- دالة عامة لطلب جلب المستخدمين يدوياً
+    _listenToAllUsers();
   }
 
   Future<void> addStudent(Student student) async {
@@ -117,14 +133,10 @@ class AdminDashboardProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _studentRepository.addNewStudent(student);
-      debugPrint(
-        'AdminDashboardProvider: Student added successfully.',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Student added successfully.');
     } catch (e) {
       _errorMessage = 'فشل إضافة الطالب: $e';
-      debugPrint(
-        'AdminDashboardProvider: Error adding student: $e',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Error adding student: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -137,14 +149,10 @@ class AdminDashboardProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _studentRepository.updateStudentData(student);
-      debugPrint(
-        'AdminDashboardProvider: Student updated successfully.',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Student updated successfully.');
     } catch (e) {
       _errorMessage = 'فشل تحديث الطالب: $e';
-      debugPrint(
-        'AdminDashboardProvider: Error updating student: $e',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Error updating student: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -159,41 +167,41 @@ class AdminDashboardProvider extends ChangeNotifier {
       await _studentRepository.deleteStudent(studentId);
       debugPrint(
         'AdminDashboardProvider: Student $studentId deleted successfully.',
-      ); // <--- Debug
+      );
     } catch (e) {
       _errorMessage = 'فشل حذف الطالب: $e';
       debugPrint(
         'AdminDashboardProvider: Error deleting student $studentId: $e',
-      ); // <--- Debug
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // <--- الدالة deleteMultipleStudents موجودة هنا
   Future<void> deleteMultipleStudents(List<String> studentIds) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
     try {
       for (String id in studentIds) {
-        await _studentRepository.deleteStudent(id);
+        await _studentRepository.deleteStudent(
+          id,
+        ); // تستدعي دالة حذف طالب واحد لكل معرف
       }
       debugPrint(
         'AdminDashboardProvider: Successfully deleted ${studentIds.length} students.',
-      ); // <--- Debug
+      );
     } catch (e) {
       _errorMessage = 'فشل حذف بعض الطلاب: $e';
       debugPrint(
         'AdminDashboardProvider: Error deleting multiple students: $e',
-      ); // <--- Debug
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
-  // نهاية الدالة deleteMultipleStudents --->
 
   Future<void> parseStudentsFromCsv() async {
     _isLoading = true;
@@ -204,44 +212,41 @@ class AdminDashboardProvider extends ChangeNotifier {
 
     debugPrint(
       'AdminDashboardProvider: Starting CSV file picking and parsing...',
-    ); // <--- Debug
+    );
     try {
-      // استخدام FlutterFileDialog.pickFile مع fileExtensionsFilter
       final filePath = await FlutterFileDialog.pickFile(
         params: OpenFileDialogParams(
           dialogType: OpenFileDialogType.document,
-          fileExtensionsFilter: [
-            'csv',
-          ], // <--- تم التغيير هنا: استخدام fileExtensionsFilter
+          fileExtensionsFilter: ['csv'],
         ),
       );
 
       if (filePath != null) {
         debugPrint(
           'AdminDashboardProvider: File picker returned a file path: $filePath',
-        ); // <--- Debug
+        );
         final file = File(filePath);
         if (await file.exists()) {
           final bytes = await file.readAsBytes();
           debugPrint(
             'AdminDashboardProvider: File bytes are available. Size: ${bytes.length} bytes',
-          ); // <--- Debug
+          );
           final csvString = utf8.decode(bytes);
           debugPrint(
             'AdminDashboardProvider: Decoded CSV string (first 200 chars): ${csvString.substring(0, csvString.length > 200 ? 200 : csvString.length)}',
-          ); // <--- Debug
+          );
 
           List<List<dynamic>> rowsAsListOfValues = const CsvToListConverter()
               .convert(csvString);
           debugPrint(
             'AdminDashboardProvider: CSV converter returned ${rowsAsListOfValues.length} rows.',
-          ); // <--- Debug
+          );
 
           if (rowsAsListOfValues.isEmpty) {
             _errorMessage = 'ملف CSV فارغ أو غير صالح.';
             debugPrint(
               'AdminDashboardProvider: Error - CSV is empty after conversion.',
-            ); // <--- Debug
+            );
             notifyListeners();
             return;
           }
@@ -249,13 +254,11 @@ class AdminDashboardProvider extends ChangeNotifier {
           final List<String> headers = rowsAsListOfValues[0]
               .map((e) => e.toString().trim())
               .toList();
-          debugPrint(
-            'AdminDashboardProvider: Headers found: $headers',
-          ); // <--- Debug
+          debugPrint('AdminDashboardProvider: Headers found: $headers');
           final List<List<dynamic>> dataRows = rowsAsListOfValues.sublist(1);
           debugPrint(
             'AdminDashboardProvider: Data rows count: ${dataRows.length}',
-          ); // <--- Debug
+          );
 
           final int serialNumberIndex = headers.indexOf('Serial Number');
           final int studentNameIndex = headers.indexOf('Student Name');
@@ -272,9 +275,7 @@ class AdminDashboardProvider extends ChangeNotifier {
               classLeadEmailIndex == -1) {
             _errorMessage =
                 'ملف CSV لا يحتوي على جميع الأعمدة المطلوبة (Serial Number, Student Name, Class Name, Gender, Section, Class Lead Email).';
-            debugPrint(
-              'AdminDashboardProvider: Missing required CSV headers.',
-            ); // <--- Debug
+            debugPrint('AdminDashboardProvider: Missing required CSV headers.');
             notifyListeners();
             return;
           }
@@ -289,7 +290,7 @@ class AdminDashboardProvider extends ChangeNotifier {
               );
               debugPrint(
                 'AdminDashboardProvider: Row $rowNumber incomplete: $row',
-              ); // <--- Debug
+              );
               continue;
             }
             try {
@@ -311,7 +312,7 @@ class AdminDashboardProvider extends ChangeNotifier {
                 );
                 debugPrint(
                   'AdminDashboardProvider: Row $rowNumber has empty required fields.',
-                ); // <--- Debug
+                );
                 continue;
               }
 
@@ -328,7 +329,7 @@ class AdminDashboardProvider extends ChangeNotifier {
                 );
                 debugPrint(
                   'AdminDashboardProvider: Row $rowNumber: Class Lead "$classLeadEmail" not found.',
-                ); // <--- Debug
+                );
                 continue;
               }
 
@@ -350,7 +351,7 @@ class AdminDashboardProvider extends ChangeNotifier {
               );
               debugPrint(
                 'AdminDashboardProvider: Error parsing row $rowNumber: $e',
-              ); // <--- Debug
+              );
             }
           }
 
@@ -369,25 +370,25 @@ class AdminDashboardProvider extends ChangeNotifier {
           }
           debugPrint(
             'AdminDashboardProvider: CSV parsing finished. Valid students: ${_parsedStudentsForImport.length}, Errors: ${_csvValidationErrors.length}',
-          ); // <--- Debug
+          );
         } else {
           _errorMessage =
               'الملف المختار فارغ أو لا يمكن قراءته. يرجى التأكد من أن الملف يحتوي على بيانات وأن التطبيق لديه صلاحيات القراءة.';
           debugPrint(
             'AdminDashboardProvider: Error - Selected file has no bytes.',
-          ); // <--- Debug
+          );
         }
       } else {
         _errorMessage = 'لم يتم اختيار ملف CSV.';
         debugPrint(
           'AdminDashboardProvider: File picker returned null (no file selected).',
-        ); // <--- Debug
+        );
       }
     } catch (e) {
       _errorMessage = 'فشل استيراد ملف CSV: $e';
       debugPrint(
         'AdminDashboardProvider: General error during file picking/parsing: $e',
-      ); // <--- Debug
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -407,7 +408,7 @@ class AdminDashboardProvider extends ChangeNotifier {
 
     debugPrint(
       'AdminDashboardProvider: Starting Firestore import for ${_parsedStudentsForImport.length} students...',
-    ); // <--- Debug
+    );
     try {
       await _studentRepository.addStudentsFromCsv(_parsedStudentsForImport);
       _parsedStudentsForImport = [];
@@ -415,12 +416,12 @@ class AdminDashboardProvider extends ChangeNotifier {
       _errorMessage = null;
       debugPrint(
         'AdminDashboardProvider: Successfully imported students to Firestore.',
-      ); // <--- Debug
+      );
     } catch (e) {
       _errorMessage = 'فشل حفظ الطلاب المستوردين: $e';
       debugPrint(
         'AdminDashboardProvider: Error saving imported students to Firestore: $e',
-      ); // <--- Debug
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -433,12 +434,10 @@ class AdminDashboardProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _studentRepository.addUser(user);
-      debugPrint(
-        'AdminDashboardProvider: User added successfully.',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: User added successfully.');
     } catch (e) {
       _errorMessage = 'فشل إضافة المستخدم: $e';
-      debugPrint('AdminDashboardProvider: Error adding user: $e'); // <--- Debug
+      debugPrint('AdminDashboardProvider: Error adding user: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -451,14 +450,10 @@ class AdminDashboardProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _studentRepository.updateUser(user);
-      debugPrint(
-        'AdminDashboardProvider: User updated successfully.',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: User updated successfully.');
     } catch (e) {
       _errorMessage = 'فشل تحديث المستخدم: $e';
-      debugPrint(
-        'AdminDashboardProvider: Error updating user: $e',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Error updating user: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -471,14 +466,10 @@ class AdminDashboardProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _studentRepository.deleteUser(userId);
-      debugPrint(
-        'AdminDashboardProvider: User $userId deleted successfully.',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: User $userId deleted successfully.');
     } catch (e) {
       _errorMessage = 'فشل حذف المستخدم: $e';
-      debugPrint(
-        'AdminDashboardProvider: Error deleting user $userId: $e',
-      ); // <--- Debug
+      debugPrint('AdminDashboardProvider: Error deleting user $userId: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

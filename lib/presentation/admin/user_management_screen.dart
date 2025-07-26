@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:school_contributions_app/data/models/user.dart';
 import 'package:school_contributions_app/presentation/providers/admin_dashboard_provider.dart';
-import 'package:firebase_auth/firebase_auth.dart'
-    hide AuthProvider; // لإخفاء AuthProvider من Firebase Auth
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:flutter/foundation.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -18,11 +18,15 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   @override
   void initState() {
     super.initState();
-    // تم إزالة استدعاء _listenToAllUsers() هنا
-    // AdminDashboardProvider يقوم بالفعل بالاستماع للمستخدمين في مُنشئه
+    // <--- تم التعديل هنا: استدعاء fetchAllUsers() بدلاً من listenToAllUsers() --->
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<AdminDashboardProvider>(
+        context,
+        listen: false,
+      ).fetchAllUsers();
+    });
   }
 
-  // دالة لعرض نموذج إضافة/تعديل المستخدم
   void _showAddEditUserDialog({AppUser? userToEdit}) {
     showDialog(
       context: context,
@@ -35,9 +39,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     );
   }
 
-  // دالة لتأكيد حذف المستخدم
   void _confirmDeleteUser(AppUser user) {
-    // الحصول على ScaffoldMessenger قبل فتح الـ dialog
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
@@ -54,7 +56,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.of(dialogContext).pop(); // إغلاق مربع الحوار
+                  Navigator.of(dialogContext).pop();
                   final provider = Provider.of<AdminDashboardProvider>(
                     dialogContext,
                     listen: false,
@@ -154,6 +156,22 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                               color: Colors.grey.shade700,
                             ),
                           ),
+                        if (user.role == UserRole.classLead) ...[
+                          Text(
+                            'تعديل الدفعات: ${user.canEditPayments ? 'مسموح' : 'غير مسموح'}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          Text(
+                            'عرض الطلاب: ${user.canViewStudents ? 'مسموح' : 'غير مسموح'}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
@@ -183,16 +201,13 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddEditUserDialog(),
         backgroundColor: Colors.blueAccent,
-        child: const Icon(Icons.person_add, color: Colors.white),
         tooltip: 'إضافة مستخدم جديد',
+        child: const Icon(Icons.person_add, color: Colors.white),
       ),
     );
   }
 }
 
-// -----------------------------------------------------------------------------
-// AddEditUserDialog - مربع حوار لإضافة/تعديل المستخدمين
-// -----------------------------------------------------------------------------
 class AddEditUserDialog extends StatefulWidget {
   final AppUser? userToEdit;
 
@@ -206,19 +221,28 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  UserRole _selectedRole = UserRole.classLead; // الدور الافتراضي
-  List<String> _assignedClasses = []; // الفصول المخصصة
+  UserRole _selectedRole = UserRole.classLead;
+  List<String> _assignedClasses = [];
   bool _isPasswordVisible = false;
-  bool _isCreatingUserInAuth = false; // لحالة تحميل Firebase Auth
+  bool _isCreatingUserInAuth = false;
 
-  // قائمة بجميع الفصول المتاحة (يمكن جلبها من Firestore في تطبيق حقيقي)
+  bool _canEditPayments = true;
+  bool _canViewStudents = true;
+
   final List<String> _availableClasses = [
-    'الصف الأول أ', 'الصف الأول ب', 'الصف الثاني أ', 'الصف الثاني ب',
-    'الصف الثالث أ', 'الصف الثالث ب', 'الصف الرابع أ', 'الصف الرابع ب',
-    'الصف الخامس أ', 'الصف الخامس ب', 'الصف السادس أ', 'الصف السادس ب',
-    'الصف السابع أ', 'الصف السابع ب', 'الصف الثامن أ', 'الصف الثامن ب',
-    'الصف التاسع أ', 'الصف التاسع ب', 'الصف العاشر أ', 'الصف العاشر ب',
-    '', // خيار فارغ لعدم تحديد فصل (للسماح بمسؤول فصل بدون فصول محددة)
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
+    '',
   ];
 
   @override
@@ -228,6 +252,8 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
       _emailController.text = widget.userToEdit!.email;
       _selectedRole = widget.userToEdit!.role;
       _assignedClasses = List.from(widget.userToEdit!.assignedClasses);
+      _canEditPayments = widget.userToEdit!.canEditPayments;
+      _canViewStudents = widget.userToEdit!.canViewStudents;
     }
   }
 
@@ -244,11 +270,8 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
         context,
         listen: false,
       );
-      String? userId;
       String? errorMessage;
-      final scaffoldMessenger = ScaffoldMessenger.of(
-        context,
-      ); // <--- الحصول على ScaffoldMessenger هنا
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
 
       setState(() {
         _isCreatingUserInAuth = true;
@@ -256,16 +279,13 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
 
       try {
         if (widget.userToEdit == null) {
-          // إضافة مستخدم جديد
-          // أولاً: إنشاء المستخدم في Firebase Authentication
           final UserCredential userCredential = await FirebaseAuth.instance
               .createUserWithEmailAndPassword(
                 email: _emailController.text.trim(),
                 password: _passwordController.text.trim(),
               );
-          userId = userCredential.user!.uid;
+          final String userId = userCredential.user!.uid;
 
-          // ثانياً: حفظ بيانات المستخدم والدور في Firestore
           final newUser = AppUser(
             id: userId,
             email: _emailController.text.trim(),
@@ -273,25 +293,35 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
             assignedClasses: _selectedRole == UserRole.classLead
                 ? _assignedClasses
                 : [],
+            canEditPayments: _selectedRole == UserRole.classLead
+                ? _canEditPayments
+                : false,
+            canViewStudents: _selectedRole == UserRole.classLead
+                ? _canViewStudents
+                : false,
           );
           await provider.addUser(newUser);
-          errorMessage = provider.errorMessage; // تحقق من الأخطاء من المزود
+          errorMessage = provider.errorMessage;
         } else {
-          // تعديل مستخدم موجود
           final updatedUser = widget.userToEdit!.copyWith(
             role: _selectedRole,
             assignedClasses: _selectedRole == UserRole.classLead
                 ? _assignedClasses
                 : [],
+            canEditPayments: _selectedRole == UserRole.classLead
+                ? _canEditPayments
+                : false,
+            canViewStudents: _selectedRole == UserRole.classLead
+                ? _canViewStudents
+                : false,
           );
           await provider.updateUser(updatedUser);
-          errorMessage = provider.errorMessage; // تحقق من الأخطاء من المزود
+          errorMessage = provider.errorMessage;
         }
 
         if (errorMessage == null) {
-          Navigator.of(context).pop(); // إغلاق مربع الحوار عند النجاح
+          Navigator.of(context).pop();
           scaffoldMessenger.showSnackBar(
-            // <--- استخدام المرجع المحفوظ
             SnackBar(
               content: Text(
                 widget.userToEdit == null
@@ -301,14 +331,9 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
             ),
           );
         } else {
-          // عرض الخطأ إذا كان هناك مشكلة في Firestore (وليس في Auth)
-          scaffoldMessenger.showSnackBar(
-            // <--- استخدام المرجع المحفوظ
-            SnackBar(content: Text(errorMessage!)),
-          );
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text(errorMessage)));
         }
       } on FirebaseAuthException catch (e) {
-        // التعامل مع أخطاء Firebase Auth
         String authError;
         if (e.code == 'weak-password') {
           authError = 'كلمة المرور ضعيفة جداً.';
@@ -319,14 +344,9 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
         } else {
           authError = 'خطأ في المصادقة: ${e.message}';
         }
-        scaffoldMessenger.showSnackBar(
-          // <--- استخدام المرجع المحفوظ
-          SnackBar(content: Text(authError)),
-        );
+        scaffoldMessenger.showSnackBar(SnackBar(content: Text(authError)));
       } catch (e) {
-        // التعامل مع أي أخطاء أخرى
         scaffoldMessenger.showSnackBar(
-          // <--- استخدام المرجع المحفوظ
           SnackBar(content: Text('حدث خطأ غير متوقع: $e')),
         );
       } finally {
@@ -353,15 +373,11 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 textAlign: TextAlign.right,
-                readOnly:
-                    widget.userToEdit !=
-                    null, // لا يمكن تعديل البريد الإلكتروني للمستخدمين الموجودين
+                readOnly: widget.userToEdit != null,
                 decoration: InputDecoration(
                   labelText: 'البريد الإلكتروني',
                   prefixIcon: const Icon(Icons.email),
-                  filled:
-                      widget.userToEdit !=
-                      null, // تظليل الحقل إذا كان للقراءة فقط
+                  filled: widget.userToEdit != null,
                   fillColor: widget.userToEdit != null
                       ? Colors.grey.shade200
                       : null,
@@ -377,8 +393,7 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
                 },
               ),
               const SizedBox(height: 15),
-              if (widget.userToEdit ==
-                  null) // حقل كلمة المرور يظهر فقط عند إضافة مستخدم جديد
+              if (widget.userToEdit == null)
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
@@ -427,9 +442,13 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
                   if (newValue != null) {
                     setState(() {
                       _selectedRole = newValue;
-                      // إذا كان الدور مدير، لا توجد فصول مخصصة
                       if (_selectedRole == UserRole.admin) {
                         _assignedClasses = [];
+                        _canEditPayments = false;
+                        _canViewStudents = false;
+                      } else {
+                        _canEditPayments = true;
+                        _canViewStudents = true;
                       }
                     });
                   }
@@ -459,12 +478,9 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
                             setState(() {
                               if (selected) {
                                 if (className.isEmpty) {
-                                  // إذا اختار "لا يوجد فصل"، امسح كل الفصول الأخرى
                                   _assignedClasses = [''];
                                 } else {
-                                  _assignedClasses.remove(
-                                    '',
-                                  ); // إذا اختار فصلاً، أزل "لا يوجد فصل"
+                                  _assignedClasses.remove('');
                                   _assignedClasses.add(className);
                                 }
                               } else {
@@ -476,6 +492,29 @@ class _AddEditUserDialogState extends State<AddEditUserDialog> {
                           checkmarkColor: Colors.blue.shade800,
                         );
                       }).toList(),
+                    ),
+                    const SizedBox(height: 15),
+                    SwitchListTile(
+                      title: const Text('السماح بتعديل الدفعات الشهرية'),
+                      value: _canEditPayments,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _canEditPayments = value;
+                        });
+                      },
+                      secondary: const Icon(Icons.payments),
+                      activeColor: Colors.green,
+                    ),
+                    SwitchListTile(
+                      title: const Text('السماح بعرض بيانات الطلاب'),
+                      value: _canViewStudents,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _canViewStudents = value;
+                        });
+                      },
+                      secondary: const Icon(Icons.visibility),
+                      activeColor: Colors.green,
                     ),
                   ],
                 ),

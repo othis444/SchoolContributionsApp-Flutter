@@ -20,23 +20,19 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // تهيئة Firebase
-  // هذا السطر يقوم بتهيئة Firebase باستخدام الخيارات الخاصة بمنصتك
-  // التي يتم إنشاؤها تلقائياً بواسطة FlutterFire CLI في ملف firebase_options.dart
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // تشغيل التطبيق وتوفير مزودي الحالة (Providers)
   runApp(
     MultiProvider(
       providers: [
-        // توفير AuthProvider لإدارة حالة المصادقة في جميع أنحاء التطبيق
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        // توفير AdminDashboardProvider لإدارة حالة لوحة تحكم المدير
         ChangeNotifierProvider(create: (_) => AdminDashboardProvider()),
-        // توفير ClassLeadProvider لإدارة حالة لوحة تحكم مسؤول الفصل
-        ChangeNotifierProvider(create: (_) => ClassLeadProvider()),
-        // يمكنك إضافة أي مزودي حالة إضافيين هنا حسب الحاجة
+        // <--- تم التعديل هنا: تمرير context إلى ClassLeadProvider
+        ChangeNotifierProvider(
+          create: (context) => ClassLeadProvider(context: context),
+        ),
       ],
-      // MyApp هو الـ Widget الجذر لتطبيقك، والذي تم تعريفه في ملف app.dart
       child: const MyApp(),
     ),
   );

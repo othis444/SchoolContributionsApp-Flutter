@@ -6,7 +6,7 @@ class Student {
   final String id; // Firestore Document ID (Auto-ID)
   final String serialNumber; // الرقم التسلسلي للطالب
   final String studentName; // اسم الطالب
-  final String className; // الصف (مثلاً "الصف السابع أ")
+  final String className; // الصف (مثلاً "1" أو "2") <--- تم تحديث الوصف
   final String gender; // الجنس (ذكر أو أنثى)
   final String section; // الشعبة (مثلاً "أ")
   final String classLeadId; // ID الخاص بالمعلم المسؤول عن هذا الصف
@@ -46,7 +46,7 @@ class Student {
       id: documentId,
       serialNumber: json['serialNumber'] as String,
       studentName: json['studentName'] as String,
-      className: json['className'] as String,
+      className: json['className'] as String, // <--- تأكد أنها String
       gender: json['gender'] as String,
       section: json['section'] as String,
       classLeadId: json['classLeadId'] as String,

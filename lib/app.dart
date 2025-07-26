@@ -12,14 +12,13 @@ import 'package:school_contributions_app/core/constants/routes.dart';
 import 'package:school_contributions_app/presentation/auth/login_screen.dart';
 import 'package:school_contributions_app/presentation/admin/admin_dashboard_screen.dart';
 import 'package:school_contributions_app/presentation/class_lead/class_lead_dashboard_screen.dart';
+import 'package:school_contributions_app/presentation/class_lead/class_lead_selection_screen.dart'; // <--- استيراد الشاشة الجديدة
 import 'package:school_contributions_app/presentation/admin/student_management_screen.dart';
 import 'package:school_contributions_app/presentation/admin/user_management_screen.dart';
-import 'package:school_contributions_app/presentation/student_details_screen.dart'; // شاشة تفاصيل الطالب
-
-// استيراد AuthProvider
+import 'package:school_contributions_app/presentation/student_details_screen.dart';
 import 'package:school_contributions_app/presentation/providers/auth_provider.dart';
-import 'package:school_contributions_app/data/models/user.dart'; // لاستخدام UserRole
-import 'package:flutter/foundation.dart'; // لاستخدام debugPrint
+import 'package:school_contributions_app/data/models/user.dart';
+// import 'package:flutter/foundation.dart'; // <--- تم إزالة هذا الاستيراد غير الضروري
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -48,39 +47,54 @@ class _MyAppState extends State<MyApp> {
             path: AppRoutes.adminDashboard,
             builder: (context, state) => const AdminDashboardScreen(),
             routes: [
-              // <--- إضافة مسارات فرعية هنا
               GoRoute(
-                path: AppRoutes.studentManagement, // <--- المسار النسبي
+                path: AppRoutes.studentManagement,
                 builder: (context, state) => const StudentManagementScreen(),
               ),
               GoRoute(
-                path: AppRoutes.userManagement, // <--- المسار النسبي
+                path: AppRoutes.userManagement,
                 builder: (context, state) => const UserManagementScreen(),
               ),
             ],
           ),
+          // مسار شاشة اختيار الشهر والصف للمعلم
           GoRoute(
-            path: AppRoutes.classLeadDashboard,
-            builder: (context, state) =>
-                ClassLeadDashboardScreen(key: ValueKey('classLeadDashboard')),
-            routes: [
-              // <--- إضافة مسارات فرعية هنا أيضاً إذا لزم الأمر
-              // يمكنك إضافة مسارات فرعية هنا لـ ClassLeadDashboard مثل تفاصيل الطالب
-            ],
+            path: AppRoutes.classLeadSelection,
+            builder: (context, state) => const ClassLeadSelectionScreen(),
           ),
-          // <--- مسار تفاصيل الطالب مع معامل ID
+          // مسار لوحة تحكم المعلم مع المعاملات
           GoRoute(
-            path:
-                '${AppRoutes.studentDetails}/:studentId', // مسار مع معامل studentId
+            path: '${AppRoutes.classLeadDashboard}/:monthKey/:className',
+            builder: (context, state) {
+              final monthKey = state.pathParameters['monthKey'];
+              final className = state.pathParameters['className'];
+              if (monthKey == null || className == null) {
+                return Scaffold(
+                  appBar: AppBar(title: const Text('خطأ')),
+                  body: const Center(
+                    child: Text('معلومات الشهر أو الصف مفقودة!'),
+                  ),
+                );
+              }
+              // <--- تمرير المعاملات كـ named parameters
+              return ClassLeadDashboardScreen(
+                monthKey: monthKey,
+                className: className,
+                key: ValueKey('classLeadDashboard-$monthKey-$className'),
+              );
+            },
+          ),
+          GoRoute(
+            path: '${AppRoutes.studentDetails}/:studentId',
             builder: (context, state) {
               final studentId = state.pathParameters['studentId'];
               debugPrint(
                 'StudentDetailsScreen builder: studentId received: $studentId',
-              ); // <--- رسالة Debug
+              );
               if (studentId == null) {
                 debugPrint(
                   'StudentDetailsScreen builder: studentId is NULL, showing error screen.',
-                ); // <--- رسالة Debug
+                );
                 return Scaffold(
                   appBar: AppBar(title: const Text('خطأ')),
                   body: const Center(child: Text('معرف الطالب مفقود!')),
@@ -97,13 +111,13 @@ class _MyAppState extends State<MyApp> {
         redirect: (context, state) {
           final bool isLoggedIn = authProvider.isLoggedIn;
           final UserRole? userRole = authProvider.userRole;
-          final bool isLoading = authProvider.isLoading;
+          final bool isLoadingAuth = authProvider.isLoading;
 
           debugPrint(
-            'GoRouter Redirect: Current Path: ${state.fullPath}, IsLoggedIn: $isLoggedIn, UserRole: ${userRole?.toString().split('.').last}, IsLoading: $isLoading',
+            'GoRouter Redirect: Current Path: ${state.fullPath}, IsLoggedIn: $isLoggedIn, UserRole: ${userRole?.toString().split('.').last}, IsLoading: $isLoadingAuth',
           );
 
-          if (isLoading) {
+          if (isLoadingAuth) {
             debugPrint(
               'GoRouter Redirect: Auth or Role is still loading, returning null.',
             );
@@ -115,13 +129,14 @@ class _MyAppState extends State<MyApp> {
               state.fullPath == AppRoutes.adminDashboard ||
               (state.fullPath?.startsWith('${AppRoutes.adminDashboard}/') ??
                   false);
+          final bool isGoingToClassLeadSelection =
+              state.fullPath == AppRoutes.classLeadSelection;
           final bool isGoingToClassLeadDashboard =
-              state.fullPath == AppRoutes.classLeadDashboard ||
-              (state.fullPath?.startsWith('${AppRoutes.classLeadDashboard}/') ??
-                  false);
+              state.fullPath?.startsWith('${AppRoutes.classLeadDashboard}/') ??
+              false;
           final bool isGoingToStudentDetails =
               (state.fullPath?.startsWith('${AppRoutes.studentDetails}/') ??
-              false); // <--- جديد: للتحقق من مسار تفاصيل الطالب
+              false);
 
           if (!isLoggedIn) {
             debugPrint(
@@ -141,9 +156,9 @@ class _MyAppState extends State<MyApp> {
               return AppRoutes.adminDashboard;
             } else if (userRole == UserRole.classLead) {
               debugPrint(
-                'GoRouter Redirect: Role is Class Lead. Redirecting to Class Lead Dashboard.',
+                'GoRouter Redirect: Role is Class Lead. Redirecting to Class Lead Selection.',
               );
-              return AppRoutes.classLeadDashboard;
+              return AppRoutes.classLeadSelection;
             }
             debugPrint(
               'GoRouter Redirect: Role not recognized or is Student. Redirecting to Login.',
@@ -162,14 +177,14 @@ class _MyAppState extends State<MyApp> {
               );
               return AppRoutes.adminDashboard;
             } else if (userRole == UserRole.classLead &&
+                !isGoingToClassLeadSelection &&
                 !isGoingToClassLeadDashboard &&
                 !isGoingToStudentDetails) {
               debugPrint(
-                'GoRouter Redirect: Logged in as Class Lead, but not on Class Lead Dashboard or Student Details path. Redirecting.',
+                'GoRouter Redirect: Logged in as Class Lead, but not on Class Lead Selection/Dashboard or Student Details path. Redirecting.',
               );
-              return AppRoutes.classLeadDashboard;
+              return AppRoutes.classLeadSelection;
             } else if (userRole == UserRole.student) {
-              // إذا كان طالبًا، أعده إلى شاشة تسجيل الدخول
               debugPrint(
                 'GoRouter Redirect: Logged in as Student. Redirecting to Login.',
               );
@@ -203,7 +218,6 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp.router(
       title: 'متابعة المساهمات المجتمعية',
-
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -218,7 +232,6 @@ class _MyAppState extends State<MyApp> {
         }
         return supportedLocales.first;
       },
-
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
